@@ -11,14 +11,17 @@ def _getenv_bool(key: str, default: bool = True) -> bool:
     return str(val).strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
-GIGACHAT_CREDENTIALS = (os.getenv("GIGACHAT_CREDENTIALS") or "").strip()  # base64(client_id:client_secret)
+GIGACHAT_CREDENTIALS = (os.getenv("GIGACHAT_CREDENTIALS") or "").strip()
+
+# короткоживущий bearer (если уже есть). Поддерживаем оба имени: USER_TOKEN и ACCESS_TOKEN
+GIGACHAT_USER_TOKEN = (
+        os.getenv("GIGACHAT_USER_TOKEN")
+        or os.getenv("GIGACHAT_ACCESS_TOKEN")
+        or ""
+).strip()
+
 GIGACHAT_SCOPE = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS").strip()
 GIGACHAT_VERIFY_SSL = _getenv_bool("GIGACHAT_VERIFY_SSL", True)
-
-# Опционально (часто пусто)
-GIGACHAT_ACCESS_TOKEN = (os.getenv("GIGACHAT_ACCESS_TOKEN") or "").strip()  # bearer-токен (~30 мин), обычно не задаём
-GIGACHAT_BASE_URL = os.getenv("GIGACHAT_BASE_URL") or None
-GIGACHAT_AUTH_URL = os.getenv("GIGACHAT_AUTH_URL") or None
 
 # Пути проекта
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -33,26 +36,27 @@ os.makedirs(INDEX_DIR, exist_ok=True)
 
 def gigachat_common_kwargs() -> dict:
     """
-    Общие kwargs для langchain_gigachat.GigaChat / GigaChatEmbeddings.
-    Не задаём имя модели — используем дефолты SDK.
+    Общие kwargs для langchain_gigachat.{GigaChat,GigaChatEmbeddings}.
+    - Если задан user_token → используем его напрямую.
     """
     kwargs: dict = {"verify_ssl_certs": GIGACHAT_VERIFY_SSL}
-    if GIGACHAT_BASE_URL:
-        kwargs["base_url"] = GIGACHAT_BASE_URL
-    if GIGACHAT_AUTH_URL:
-        kwargs["auth_url"] = GIGACHAT_AUTH_URL
-
-    if GIGACHAT_ACCESS_TOKEN:
-        kwargs["access_token"] = GIGACHAT_ACCESS_TOKEN
+    if GIGACHAT_USER_TOKEN:
+        kwargs["access_token"] = GIGACHAT_USER_TOKEN
     elif GIGACHAT_CREDENTIALS:
         kwargs["credentials"] = GIGACHAT_CREDENTIALS
         kwargs["scope"] = GIGACHAT_SCOPE
     return kwargs
 
 
-def gigachat_gtchat_kwargs() -> dict:
+def gigachat_chat_kwargs() -> dict:
     return dict(gigachat_common_kwargs())
 
 
 def gigachat_embeddings_kwargs() -> dict:
     return dict(gigachat_common_kwargs())
+
+
+__all__ = [
+    "INDEX_DIR", "LINKS_PATH", "RAW_DIR",
+    "gigachat_common_kwargs", "gigachat_chat_kwargs", "gigachat_embeddings_kwargs",
+]

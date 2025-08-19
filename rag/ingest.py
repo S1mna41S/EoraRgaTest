@@ -1,4 +1,5 @@
 import asyncio
+import re
 import json
 import os
 
@@ -13,22 +14,24 @@ from app.utils import extract_text
 
 
 def _get_embeddings():
-    # Пытаемся GigaChat → если не взлетело (в т.ч. SSL), мгновенно уходим в локальные эмбеддинги
     try:
         from langchain_gigachat import GigaChatEmbeddings
-        from app.config import gigachat_embeddings_kwargs
         emb = GigaChatEmbeddings(**gigachat_embeddings_kwargs())
-        try:
-            # Предполётная проверка — если тут упадёт (SSL/токен), уйдём в fallback
-            _ = emb.embed_query("healthcheck")
-            return emb
-        except Exception as e:
-            raise RuntimeError(f"GigaChat embeddings unavailable: {e}")
+        emb.embed_query("healthcheck")  # предполётная проверка
+        return emb
     except Exception as e:
-        from loguru import logger
         logger.warning(f"Fallback to sentence-transformers: {e}")
         from langchain_community.embeddings import SentenceTransformerEmbeddings
         return SentenceTransformerEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+
+
+def _safe_path_from_url(url: str) -> str:
+    # убираем схему, потом запрещённые символы
+    safe = re.sub(r"^https?://", "", url)
+    safe = safe.replace("/", "\\")
+    safe = re.sub(r'[<>:"/\\|?*]+', "_", safe)
+    return os.path.join(RAW_DIR, f"{safe}.html")
 
 
 async def _fetch(client: httpx.AsyncClient, url: str) -> dict:
@@ -38,7 +41,7 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> dict:
         html = resp.text
 
         # Сохраним сырой html
-        safe = url.replace('https://', '').replace('/', '\\')
+        safe = _safe_path_from_url(url)
         full_path = os.path.join(RAW_DIR, f'{safe}.html')
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(os.path.join(RAW_DIR, f'{safe}.html'), 'w', encoding='utf-8') as f:
@@ -61,7 +64,7 @@ def _load_links(path: str) -> list[str]:
         return [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
 
 
-def build_index(items: tuple):
+def build_index(items: list[dict]):
     # Фильтруем пустые
     docs = []
     for it in items:
@@ -71,6 +74,10 @@ def build_index(items: tuple):
         docs.append(Document(page_content=it["text"], metadata=meta))
 
     if not docs:
+        logger.error(
+            "Нет документов для индексации (все страницы пустые/не распарсились)."
+            " Проверьте data/links.txt и доступность сайта."
+        )
         return
 
     # Собираем чанки
