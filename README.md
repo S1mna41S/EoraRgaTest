@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 # 3) Конфиг
 cp .env.example .env
-# В .env заполнить GIGACHAT_CREDENTIALS (см. ниже)
+# В .env заполнить GIGACHAT_CREDENTIALS
 
 # 4) Индексация ссылок из data/links.txt
 python -m rag.ingest
